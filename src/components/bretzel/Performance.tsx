@@ -21,6 +21,7 @@ import {
   fmtDate,
   getLastNDays,
   DEFAULT_SETTINGS,
+  AppSettings,
 } from './shared'
 import { Card, SectionHeader, StatCard } from './ui'
 
@@ -40,7 +41,7 @@ export function PerformanceTab({ user, viewOutlet }: Props) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
-  const settings = store.get('bz_settings', DEFAULT_SETTINGS)
+  const settings: AppSettings = store.get('bz_settings', DEFAULT_SETTINGS)
   const days = getLastNDays(period)
 
   // Aggregate sales for viewed outlet
@@ -137,7 +138,10 @@ export function PerformanceTab({ user, viewOutlet }: Props) {
   // Attendance summary
   const allAtt: AttendanceEntry[] = store.get(STORAGE_KEYS.attendance(viewOutlet), [])
   const periodAtt = allAtt.filter((a) => days.includes(a.date) && a.outlet === viewOutlet)
-  const staffList = STAFF[viewOutlet]
+  const staffList =
+    (settings.staffList?.[viewOutlet] ?? []).length > 0
+      ? settings.staffList[viewOutlet]
+      : STAFF[viewOutlet]
 
   const attSummary = staffList.map((staff) => {
     const staffAtt = periodAtt.filter((a) => a.staff === staff)
