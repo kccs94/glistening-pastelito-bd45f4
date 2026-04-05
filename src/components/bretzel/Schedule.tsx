@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
-import type { Outlet, ShiftType, AttendanceStatus, AttendanceEntry, ScheduleEntry } from './shared'
+import type { Outlet, ShiftType, AttendanceStatus, AttendanceEntry, ScheduleEntry, AppSettings } from './shared'
 import {
   C,
-  STAFF,
   DAYS,
   SHIFT_TYPES,
   ATTENDANCE_STATUSES,
@@ -13,6 +12,7 @@ import {
   todayStr,
   fmtDate,
   genId,
+  DEFAULT_SETTINGS,
 } from './shared'
 import { Badge, Btn, Card, SectionHeader, Sheet } from './ui'
 
@@ -43,7 +43,13 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
   const today = todayStr()
   const [weekStart, setWeekStart] = useState(() => getMondayOfWeek(new Date()))
   const weekDates = getWeekDates(weekStart)
-  const staffList = STAFF[viewOutlet]
+
+  // ── Always read staff from settings so edits in Settings reflect here ──
+  const settings: AppSettings = store.get('bz_settings', DEFAULT_SETTINGS)
+  const staffList: string[] =
+    (settings.staffList?.[viewOutlet] ?? []).length > 0
+      ? settings.staffList[viewOutlet]
+      : DEFAULT_SETTINGS.staffList[viewOutlet]
 
   const schedKey = STORAGE_KEYS.schedule(viewOutlet, weekStart)
   const [shifts, setShifts] = useState<Shifts>(() => {
@@ -152,24 +158,21 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
       <Card>
         <SectionHeader title={`Today's Attendance — ${fmtDate(today)}`} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {staffList.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, padding: '8px 0' }}>
+              No staff assigned. Add staff in Settings.
+            </div>
+          )}
           {todayAtt.map(({ staff, att }) => (
             <div
               key={staff}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
             >
               <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{staff}</span>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 {att ? (
                   <>
-                    <Badge
-                      label={att.status}
-                      color={ATT_COLORS[att.status]}
-                      bg={ATT_COLORS[att.status] + '22'}
-                    />
+                    <Badge label={att.status} color={ATT_COLORS[att.status]} bg={ATT_COLORS[att.status] + '22'} />
                     {att.status === 'OT' && (
                       <span style={{ fontSize: 11, color: C.muted }}>{att.otHours}h OT</span>
                     )}
@@ -200,37 +203,9 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
             borderBottom: `1px solid ${C.border}`,
           }}
         >
-          <button
-            onClick={prevWeek}
-            style={{
-              background: C.surface,
-              border: `1px solid ${C.border}`,
-              borderRadius: 6,
-              color: C.text,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              padding: '4px 10px',
-              fontSize: 16,
-            }}
-          >
-            ‹
-          </button>
+          <button onClick={prevWeek} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 10px', fontSize: 16 }}>‹</button>
           <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>{weekLabel()}</span>
-          <button
-            onClick={nextWeek}
-            style={{
-              background: C.surface,
-              border: `1px solid ${C.border}`,
-              borderRadius: 6,
-              color: C.text,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              padding: '4px 10px',
-              fontSize: 16,
-            }}
-          >
-            ›
-          </button>
+          <button onClick={nextWeek} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, cursor: 'pointer', fontFamily: 'inherit', padding: '4px 10px', fontSize: 16 }}>›</button>
         </div>
 
         {/* Scrollable grid */}
@@ -239,24 +214,28 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: `80px repeat(7, 52px)`,
+              gridTemplateColumns: `80px repeat(${DAYS.length}, 1fr)`,
               gap: 4,
-              marginBottom: 8,
+              marginBottom: 6,
+              minWidth: 400,
             }}
           >
-            <div style={{ fontSize: 10, color: C.muted }}>STAFF</div>
+            <div />
             {weekDates.map((date, i) => (
               <div
                 key={date}
                 style={{
-                  fontSize: 10,
-                  color: isToday(date) ? C.amber : C.muted,
-                  fontWeight: isToday(date) ? 800 : 600,
                   textAlign: 'center',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: isToday(date) ? C.amber : C.muted,
+                  padding: '2px 0',
+                  borderRadius: 4,
+                  background: isToday(date) ? C.amberDim : 'transparent',
                 }}
               >
                 <div>{DAYS[i]}</div>
-                <div style={{ fontSize: 9 }}>
+                <div style={{ fontSize: 8, opacity: 0.7 }}>
                   {new Date(date + 'T00:00:00').getDate()}
                 </div>
               </div>
@@ -264,27 +243,33 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
           </div>
 
           {/* Staff rows */}
+          {staffList.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, padding: '12px 0', textAlign: 'center' }}>
+              No staff — add via Settings
+            </div>
+          )}
           {staffList.map((staff) => (
             <div
               key={staff}
               style={{
                 display: 'grid',
-                gridTemplateColumns: `80px repeat(7, 52px)`,
+                gridTemplateColumns: `80px repeat(${DAYS.length}, 1fr)`,
                 gap: 4,
-                marginBottom: 6,
+                marginBottom: 4,
+                minWidth: 400,
               }}
             >
               <div
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   color: C.text,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   display: 'flex',
                   alignItems: 'center',
-                  paddingRight: 4,
-                  whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  paddingRight: 4,
                 }}
               >
                 {staff.split(' ')[0]}
@@ -363,25 +348,10 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
         </div>
 
         {/* Legend */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 10,
-            padding: '10px 14px',
-            borderTop: `1px solid ${C.border}`,
-            flexWrap: 'wrap',
-          }}
-        >
+        <div style={{ display: 'flex', gap: 10, padding: '10px 14px', borderTop: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
           {SHIFT_TYPES.map((s) => (
             <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 3,
-                  background: SHIFT_COLORS[s].color,
-                }}
-              />
+              <div style={{ width: 10, height: 10, borderRadius: 3, background: SHIFT_COLORS[s].color }} />
               <span style={{ fontSize: 10, color: C.muted }}>{s}</span>
             </div>
           ))}
@@ -408,13 +378,7 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
               {recent.map((a, i) => (
                 <div
                   key={i}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '6px 0',
-                    borderBottom: i < recent.length - 1 ? `1px solid ${C.border}` : 'none',
-                  }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderBottom: i < recent.length - 1 ? `1px solid ${C.border}` : 'none' }}
                 >
                   <div>
                     <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{a.staff}</span>
@@ -424,11 +388,7 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
                     {a.status === 'OT' && (
                       <span style={{ fontSize: 11, color: '#A855F7' }}>{a.otHours}h</span>
                     )}
-                    <Badge
-                      label={a.status}
-                      color={ATT_COLORS[a.status]}
-                      bg={ATT_COLORS[a.status] + '22'}
-                    />
+                    <Badge label={a.status} color={ATT_COLORS[a.status]} bg={ATT_COLORS[a.status] + '22'} />
                   </div>
                 </div>
               ))}
@@ -438,53 +398,22 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
       </Card>
 
       {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 80,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: C.green,
-            color: '#000',
-            padding: '10px 18px',
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: 13,
-            zIndex: 9999,
-          }}
-        >
+        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: C.green, color: '#000', padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 13, zIndex: 9999 }}>
           {toast}
         </div>
       )}
 
       {/* Attendance mark sheet */}
-      <Sheet
-        open={!!attSheet}
-        onClose={() => setAttSheet(null)}
-        title={attSheet ? `Mark — ${attSheet.staff}` : ''}
-      >
+      <Sheet open={!!attSheet} onClose={() => setAttSheet(null)} title={attSheet ? `Mark — ${attSheet.staff}` : ''}>
         {attSheet && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>
-              {fmtDate(attSheet.date)}
-            </div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 4 }}>{fmtDate(attSheet.date)}</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {ATTENDANCE_STATUSES.filter((s) => s !== 'OT').map((status) => (
                 <button
                   key={status}
                   onClick={() => markAttendance(attSheet.staff, attSheet.date, status)}
-                  style={{
-                    background: ATT_COLORS[status] + '22',
-                    border: `1px solid ${ATT_COLORS[status]}44`,
-                    borderRadius: 8,
-                    color: ATT_COLORS[status],
-                    fontFamily: 'inherit',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    padding: '12px',
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                  }}
+                  style={{ background: ATT_COLORS[status] + '22', border: `1px solid ${ATT_COLORS[status]}44`, borderRadius: 8, color: ATT_COLORS[status], fontFamily: 'inherit', fontSize: 13, fontWeight: 700, padding: '12px', cursor: 'pointer', textAlign: 'center' }}
                 >
                   {status}
                 </button>
@@ -500,31 +429,10 @@ export function ScheduleTab({ user, viewOutlet }: Props) {
                   max={12}
                   step={0.5}
                   value={otHours[attSheet.staff] ?? ''}
-                  onChange={(e) =>
-                    setOtHours((prev) => ({ ...prev, [attSheet.staff]: e.target.value }))
-                  }
-                  style={{
-                    background: C.surface,
-                    border: `1px solid ${C.border}`,
-                    borderRadius: 8,
-                    color: C.text,
-                    fontFamily: 'inherit',
-                    fontSize: 14,
-                    padding: '8px 12px',
-                    outline: 'none',
-                    width: 80,
-                  }}
+                  onChange={(e) => setOtHours((prev) => ({ ...prev, [attSheet.staff]: e.target.value }))}
+                  style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontFamily: 'inherit', fontSize: 14, padding: '8px 12px', outline: 'none', width: 80 }}
                 />
-                <Btn
-                  onClick={() =>
-                    markAttendance(
-                      attSheet.staff,
-                      attSheet.date,
-                      'OT',
-                      Number(otHours[attSheet.staff] ?? 0),
-                    )
-                  }
-                >
+                <Btn onClick={() => markAttendance(attSheet.staff, attSheet.date, 'OT', Number(otHours[attSheet.staff] ?? 0))}>
                   Mark OT
                 </Btn>
               </div>
