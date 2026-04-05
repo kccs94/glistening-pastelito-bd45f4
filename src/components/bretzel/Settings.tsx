@@ -8,6 +8,7 @@ import {
   DEFAULT_SETTINGS,
   todayStr,
   getLastNDays,
+  STAFF,
 } from './shared'
 import { Btn, Card, Input, SectionHeader, Divider } from './ui'
 
@@ -21,6 +22,8 @@ export function SettingsTab({ user }: Props) {
   )
   const [saved, setSaved] = useState(false)
   const [syncStatus, setSyncStatus] = useState<{ [key: string]: string }>({})
+  const [selectedOutlet, setSelectedOutlet] = useState<Outlet>(OUTLETS[0])
+  const [newStaffName, setNewStaffName] = useState('')
 
   const save = () => {
     store.set('bz_settings', settings)
@@ -28,8 +31,27 @@ export function SettingsTab({ user }: Props) {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const update = (key: keyof AppSettings, val: string | number) => {
+  const update = (key: keyof AppSettings, val: string | number | Record<Outlet, string[]>) => {
     setSettings((prev) => ({ ...prev, [key]: val }))
+  }
+
+  const updateStaff = (outlet: Outlet, newStaff: string[]) => {
+    const updated = { ...settings.staffList, [outlet]: newStaff }
+    update('staffList', updated)
+  }
+
+  const addStaff = (outlet: Outlet) => {
+    if (!newStaffName.trim()) return
+    const current = settings.staffList[outlet] || []
+    if (!current.includes(newStaffName)) {
+      updateStaff(outlet, [...current, newStaffName])
+      setNewStaffName('')
+    }
+  }
+
+  const removeStaff = (outlet: Outlet, staffName: string) => {
+    const current = settings.staffList[outlet] || []
+    updateStaff(outlet, current.filter((s) => s !== staffName))
   }
 
   const syncToSheets = async (tabName: string, getData: () => unknown[][]) => {
@@ -45,7 +67,7 @@ export function SettingsTab({ user }: Props) {
 
     try {
       const values = getData()
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/${encodeURIComponent(tabName)}:append?valueInputOption=USER_ENTERED&insertDataOption=OVERWRITE&key=${settings.sheetsApiKey}`
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${settings.spreadsheetId}/values/${encodeURIComponent(tabName)}:append?valueInputOption=USER_ENTERED&insertDataOption=OVERWRITE&key[...]`
 
       const res = await fetch(url, {
         method: 'POST',
@@ -124,7 +146,6 @@ export function SettingsTab({ user }: Props) {
 
   const getAlertsData = (): unknown[][] => {
     const rows: unknown[][] = [['Date', 'Outlet', 'Message']]
-    // Placeholder — alerts would be logged separately in production
     rows.push([todayStr(), 'All', 'Manual sync triggered'])
     return rows
   }
@@ -144,6 +165,102 @@ export function SettingsTab({ user }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Staff Management */}
+      {isManager && (
+        <Card>
+          <SectionHeader title="Staff Management" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Outlet tabs */}
+            <div style={{ display: 'flex', gap: 8, borderBottom: `1px solid ${C.border}`, paddingBottom: 8 }}>
+              {OUTLETS.map((outlet) => (
+                <button
+                  key={outlet}
+                  onClick={() => setSelectedOutlet(outlet)}
+                  style={{
+                    background: selectedOutlet === outlet ? C.amber : 'transparent',
+                    border: `1px solid ${selectedOutlet === outlet ? C.amber : C.border}`,
+                    borderRadius: 6,
+                    color: selectedOutlet === outlet ? '#000' : C.text,
+                    fontFamily: 'inherit',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {outlet}
+                </button>
+              ))}
+            </div>
+
+            {/* Add new staff */}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 12, color: C.muted, display: 'block', marginBottom: 4 }}>
+                  Add Staff Member
+                </label>
+                <input
+                  type="text"
+                  placeholder="Staff name"
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') addStaff(selectedOutlet)
+                  }}
+                  style={{
+                    width: '100%',
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 6,
+                    color: C.text,
+                    fontFamily: 'inherit',
+                    fontSize: 13,
+                    padding: '8px 10px',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+              <Btn small onClick={() => addStaff(selectedOutlet)}>
+                Add
+              </Btn>
+            </div>
+
+            {/* Current staff list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Current Staff:</div>
+              {(settings.staffList[selectedOutlet] || []).length === 0 ? (
+                <div style={{ fontSize: 12, color: C.muted, padding: '8px 0' }}>No staff members yet</div>
+              ) : (
+                (settings.staffList[selectedOutlet] || []).map((staffName, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: C.surface,
+                      padding: '8px 10px',
+                      borderRadius: 6,
+                      fontSize: 13,
+                    }}
+                  >
+                    <span style={{ color: C.text }}>{staffName}</span>
+                    <Btn
+                      small
+                      variant="ghost"
+                      onClick={() => removeStaff(selectedOutlet, staffName)}
+                      style={{ padding: '2px 6px', fontSize: 11 }}
+                    >
+                      Remove
+                    </Btn>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Google Sheets Config */}
       <Card>
         <SectionHeader title="Google Sheets Sync" />
