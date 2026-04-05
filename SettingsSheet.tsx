@@ -3,7 +3,6 @@ import type { AppSettings, Outlet } from './shared'
 import {
   C,
   OUTLETS,
-  STORAGE_KEYS,
   store,
   DEFAULT_SETTINGS,
 } from './shared'
@@ -32,13 +31,32 @@ export function SettingsSheet({
 }: Props) {
   const [newStaffName, setNewStaffName] = useState('')
   const [newStaffOutlet, setNewStaffOutlet] = useState<Outlet>(outlets[0])
+  const [selectedOutlet, setSelectedOutlet] = useState<Outlet>(outlets[0])
 
-  const update = (key: keyof AppSettings, val: string | number) => {
+  const update = (key: keyof AppSettings, val: unknown) => {
     setSheetCfg((prev) => ({ ...prev, [key]: val }))
   }
 
+  const updateOutletNum = (
+    field: 'monthlyTarget' | 'weekendForecast' | 'weekdayForecast',
+    outlet: Outlet,
+    val: number,
+  ) => {
+    setSheetCfg((prev) => ({
+      ...prev,
+      [field]: { ...(prev[field] ?? DEFAULT_SETTINGS[field]), [outlet]: val },
+    }))
+  }
+
+  const updateOutletStr = (field: 'waGroupNumber', outlet: Outlet, val: string) => {
+    setSheetCfg((prev) => ({
+      ...prev,
+      [field]: { ...(prev[field] ?? DEFAULT_SETTINGS[field]), [outlet]: val },
+    }))
+  }
+
   const handleSave = () => {
-    // Persist both sheetCfg AND latest staffList together
+    // Merge current staff into sheetCfg before saving
     const merged: AppSettings = { ...sheetCfg, staffList: staff }
     store.set('bz_settings', merged)
     setSheetCfg(merged)
@@ -48,32 +66,15 @@ export function SettingsSheet({
 
   const handleAddStaff = () => {
     const name = newStaffName.trim()
-    if (!name) {
-      showToast('Enter a staff name', 'error')
-      return
-    }
-    if (staff[newStaffOutlet]?.includes(name)) {
-      showToast('Staff already exists at this outlet', 'error')
-      return
-    }
-    const updated: Record<Outlet, string[]> = {
-      ...staff,
-      [newStaffOutlet]: [...(staff[newStaffOutlet] || []), name],
-    }
-    setStaff(updated)
-    // Immediately persist so Schedule tab picks up the change
-    store.set('bz_settings', { ...sheetCfg, staffList: updated })
+    if (!name) { showToast('Enter a staff name', 'error'); return }
+    if (staff[newStaffOutlet]?.includes(name)) { showToast('Staff already exists at this outlet', 'error'); return }
+    setStaff((prev) => ({ ...prev, [newStaffOutlet]: [...(prev[newStaffOutlet] || []), name] }))
     setNewStaffName('')
     showToast(`Added ${name} to ${newStaffOutlet}`)
   }
 
   const handleRemoveStaff = (outlet: Outlet, name: string) => {
-    const updated: Record<Outlet, string[]> = {
-      ...staff,
-      [outlet]: staff[outlet].filter((s) => s !== name),
-    }
-    setStaff(updated)
-    store.set('bz_settings', { ...sheetCfg, staffList: updated })
+    setStaff((prev) => ({ ...prev, [outlet]: prev[outlet].filter((s) => s !== name) }))
     showToast(`Removed ${name} from ${outlet}`)
   }
 
@@ -81,33 +82,76 @@ export function SettingsSheet({
     <Sheet open={open} onClose={onClose} title="Settings">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+        {/* Outlet Configuration */}
+        <Card>
+          <SectionHeader title="Outlet Configuration" />
+
+          {/* Outlet tabs */}
+          <div style={{ display: 'flex', gap: 8, borderBottom: `1px solid ${C.border}`, paddingBottom: 8, marginBottom: 12 }}>
+            {outlets.map((outlet) => (
+              <button
+                key={outlet}
+                onClick={() => setSelectedOutlet(outlet)}
+                style={{
+                  background: selectedOutlet === outlet ? C.amber : 'transparent',
+                  border: `1px solid ${selectedOutlet === outlet ? C.amber : C.border}`,
+                  borderRadius: 6,
+                  color: selectedOutlet === outlet ? '#000' : C.text,
+                  fontFamily: 'inherit',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '5px 10px',
+                  cursor: 'pointer',
+                }}
+              >
+                {outlet}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <Input
+              label={`Monthly Target — ${selectedOutlet} (RM)`}
+              type="number"
+              value={sheetCfg.monthlyTarget?.[selectedOutlet] ?? 80000}
+              onChange={(v) => updateOutletNum('monthlyTarget', selectedOutlet, Number(v))}
+              min={0}
+              step={1000}
+            />
+            <Input
+              label={`Weekday Forecast (RM)`}
+              type="number"
+              value={sheetCfg.weekdayForecast?.[selectedOutlet] ?? 1500}
+              onChange={(v) => updateOutletNum('weekdayForecast', selectedOutlet, Number(v))}
+              min={0}
+              step={100}
+            />
+            <Input
+              label={`Weekend Forecast (RM)`}
+              type="number"
+              value={sheetCfg.weekendForecast?.[selectedOutlet] ?? 3000}
+              onChange={(v) => updateOutletNum('weekendForecast', selectedOutlet, Number(v))}
+              min={0}
+              step={100}
+            />
+            <Input
+              label={`WhatsApp Group Number`}
+              value={sheetCfg.waGroupNumber?.[selectedOutlet] ?? ''}
+              onChange={(v) => updateOutletStr('waGroupNumber', selectedOutlet, v)}
+              placeholder="601xxxxxxxx (no + sign)"
+            />
+          </div>
+        </Card>
+
         {/* App Settings */}
         <Card>
           <SectionHeader title="App Settings" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Input
-              label="Manager WhatsApp Number"
-              value={sheetCfg.managerPhone}
-              onChange={(v) => update('managerPhone', v)}
-              placeholder="60123456789"
-            />
-            <Input
-              label="WhatsApp Group / Report Number"
-              value={sheetCfg.waGroupPhone ?? ''}
-              onChange={(v) => update('waGroupPhone', v)}
-              placeholder="60123456789"
-            />
-            <div style={{ fontSize: 11, color: C.muted, marginTop: -6, lineHeight: 1.5 }}>
-              Receives the daily sales report after each sales entry. International format, no + sign.
+            <Input label="Manager WhatsApp Number" value={sheetCfg.managerPhone} onChange={(v) => update('managerPhone', v)} placeholder="60123456789" />
+            <div style={{ fontSize: 11, color: C.muted, marginTop: -6 }}>
+              International format, no + sign (e.g. 60123456789)
             </div>
-            <Input
-              label="Daily Sales Target (RM)"
-              type="number"
-              value={sheetCfg.dailyTarget}
-              onChange={(v) => update('dailyTarget', Number(v))}
-              min={0}
-              step={100}
-            />
+            <Input label="Daily Sales Target (RM)" type="number" value={sheetCfg.dailyTarget} onChange={(v) => update('dailyTarget', Number(v))} min={0} step={100} />
           </div>
         </Card>
 
@@ -115,18 +159,8 @@ export function SettingsSheet({
         <Card>
           <SectionHeader title="Google Sheets Sync" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <Input
-              label="Spreadsheet ID"
-              value={sheetCfg.spreadsheetId}
-              onChange={(v) => update('spreadsheetId', v)}
-              placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms"
-            />
-            <Input
-              label="Google Sheets API Key"
-              value={sheetCfg.sheetsApiKey}
-              onChange={(v) => update('sheetsApiKey', v)}
-              placeholder="AIzaSy..."
-            />
+            <Input label="Spreadsheet ID" value={sheetCfg.spreadsheetId} onChange={(v) => update('spreadsheetId', v)} placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" />
+            <Input label="Google Sheets API Key" value={sheetCfg.sheetsApiKey} onChange={(v) => update('sheetsApiKey', v)} placeholder="AIzaSy..." />
           </div>
         </Card>
 
@@ -135,28 +169,19 @@ export function SettingsSheet({
           <SectionHeader title="Staff Management" />
           {outlets.map((outlet) => (
             <div key={outlet} style={{ marginBottom: 12 }}>
-              <div style={{
-                fontSize: 12, color: C.amber, fontWeight: 700,
-                marginBottom: 6, letterSpacing: '0.05em',
-              }}>
+              <div style={{ fontSize: 12, color: C.amber, fontWeight: 700, marginBottom: 6, letterSpacing: '0.05em' }}>
                 {outlet}
               </div>
               {(staff[outlet] || []).map((name) => (
-                <div key={name} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '6px 8px', background: C.surface, borderRadius: 6,
-                  marginBottom: 4, border: `1px solid ${C.border}`,
-                }}>
+                <div
+                  key={name}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: C.surface, borderRadius: 6, marginBottom: 4, border: `1px solid ${C.border}` }}
+                >
                   <span style={{ fontSize: 13, color: C.text }}>{name}</span>
                   <button
                     onClick={() => handleRemoveStaff(outlet, name)}
-                    style={{
-                      background: 'none', border: 'none', color: C.red,
-                      cursor: 'pointer', fontSize: 16, fontFamily: 'inherit', padding: '0 4px',
-                    }}
-                  >
-                    ×
-                  </button>
+                    style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 16, fontFamily: 'inherit', padding: '0 4px' }}
+                  >×</button>
                 </div>
               ))}
               {(staff[outlet] || []).length === 0 && (
@@ -169,9 +194,7 @@ export function SettingsSheet({
 
           {/* Add staff */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, letterSpacing: '0.06em' }}>
-              ADD STAFF
-            </div>
+            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, letterSpacing: '0.06em' }}>ADD STAFF</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <input
                 type="text"
@@ -179,20 +202,12 @@ export function SettingsSheet({
                 value={newStaffName}
                 onChange={(e) => setNewStaffName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddStaff()}
-                style={{
-                  flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-                  color: C.text, fontFamily: 'inherit', fontSize: 13, padding: '8px 12px',
-                  outline: 'none', boxSizing: 'border-box' as const,
-                }}
+                style={{ flex: 1, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontFamily: 'inherit', fontSize: 13, padding: '8px 12px', outline: 'none', boxSizing: 'border-box' }}
               />
               <select
                 value={newStaffOutlet}
                 onChange={(e) => setNewStaffOutlet(e.target.value as Outlet)}
-                style={{
-                  background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-                  color: C.text, fontFamily: 'inherit', fontSize: 12, padding: '8px',
-                  outline: 'none', appearance: 'none' as const, cursor: 'pointer',
-                }}
+                style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontFamily: 'inherit', fontSize: 12, padding: '8px', outline: 'none', appearance: 'none', cursor: 'pointer' }}
               >
                 {outlets.map((o) => (
                   <option key={o} value={o} style={{ background: C.surface }}>{o}</option>

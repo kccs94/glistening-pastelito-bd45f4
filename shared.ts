@@ -71,10 +71,10 @@ export interface SalesEntry {
   submittedAt: string
   approved: boolean
   approvedBy?: string
-  // New fields
-  doughMade?: number
-  totalBill?: number
-  totalLeftover?: number
+  // ── New fields ──
+  doughMade: number
+  totalBill: number
+  leftOver: number
 }
 
 export interface ScheduleEntry {
@@ -91,27 +91,23 @@ export interface AttendanceEntry {
   otHours: number
 }
 
-export interface OutletTargets {
-  monthlyTarget: number
-  forecastWeekday: number
-  forecastWeekend: number
-}
-
 export interface AppSettings {
   sheetsApiKey: string
   spreadsheetId: string
   managerPhone: string
-  waGroupPhone: string          // NEW: designated WhatsApp group/number
   dailyTarget: number
-  staffList: Record<Outlet, string[]>        // NEW: dynamic staff per outlet
-  outletTargets: Record<Outlet, OutletTargets> // NEW: per-outlet targets & forecast
+  // ── New fields ──
+  staffList: Record<Outlet, string[]>
+  monthlyTarget: Record<Outlet, number>
+  weekendForecast: Record<Outlet, number>
+  weekdayForecast: Record<Outlet, number>
+  waGroupNumber: Record<Outlet, string>
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const OUTLETS: Outlet[] = ['1 Utama', 'Melawati Mall']
 
-// Kept as fallback / seed — runtime always reads from settings.staffList
 export const STAFF: Record<Outlet, string[]> = {
   '1 Utama': ['Ahmad Razif', 'Nurul Ain'],
   'Melawati Mall': ['Hafiz Zulkifli', 'Siti Rahmah'],
@@ -327,26 +323,10 @@ export const getLastNDays = (n: number): string[] => {
 }
 
 export const outletForStaff = (name: string): Outlet | null => {
-  // Check dynamic settings first, then fall back to static STAFF
-  try {
-    const settings: AppSettings = store.get('bz_settings', DEFAULT_SETTINGS)
-    for (const [outlet, staffArr] of Object.entries(settings.staffList)) {
-      if ((staffArr as string[]).includes(name)) return outlet as Outlet
-    }
-  } catch {}
   for (const [outlet, staff] of Object.entries(STAFF)) {
     if (staff.includes(name)) return outlet as Outlet
   }
   return null
-}
-
-export const getAllStaffFromSettings = (): string[] => {
-  try {
-    const settings: AppSettings = store.get('bz_settings', DEFAULT_SETTINGS)
-    return OUTLETS.flatMap((o) => settings.staffList[o] || [])
-  } catch {
-    return ALL_STAFF
-  }
 }
 
 export const buildWaLink = (phone: string, message: string) =>
@@ -355,26 +335,44 @@ export const buildWaLink = (phone: string, message: string) =>
 export const genId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
-// ─── Default Settings ─────────────────────────────────────────────────────────
-
-export const DEFAULT_OUTLET_TARGETS: OutletTargets = {
-  monthlyTarget: 80000,
-  forecastWeekday: 1500,
-  forecastWeekend: 3000,
-}
-
 export const DEFAULT_SETTINGS: AppSettings = {
   sheetsApiKey: '',
   spreadsheetId: '',
   managerPhone: '',
-  waGroupPhone: '',
   dailyTarget: 3000,
   staffList: {
-    '1 Utama': [...STAFF['1 Utama']],
-    'Melawati Mall': [...STAFF['Melawati Mall']],
+    '1 Utama': ['Ahmad Razif', 'Nurul Ain'],
+    'Melawati Mall': ['Hafiz Zulkifli', 'Siti Rahmah'],
   },
-  outletTargets: {
-    '1 Utama': { ...DEFAULT_OUTLET_TARGETS },
-    'Melawati Mall': { ...DEFAULT_OUTLET_TARGETS },
+  monthlyTarget: {
+    '1 Utama': 80000,
+    'Melawati Mall': 80000,
   },
+  weekendForecast: {
+    '1 Utama': 3000,
+    'Melawati Mall': 3000,
+  },
+  weekdayForecast: {
+    '1 Utama': 1500,
+    'Melawati Mall': 1500,
+  },
+  waGroupNumber: {
+    '1 Utama': '',
+    'Melawati Mall': '',
+  },
+}
+
+// ─── MTD Sales helper ─────────────────────────────────────────────────────────
+
+export const getMtdSales = (outlet: Outlet, includeToday = true): number => {
+  const entries: SalesEntry[] = store.get(STORAGE_KEYS.salesEntries(outlet), [])
+  const now = new Date()
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return entries
+    .filter((e) => {
+      if (!e.date.startsWith(monthPrefix)) return false
+      if (!includeToday && e.date === todayStr()) return false
+      return true
+    })
+    .reduce((sum, e) => sum + e.cash + e.card + e.duitnow + e.onePay, 0)
 }
