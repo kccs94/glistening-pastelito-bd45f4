@@ -71,6 +71,10 @@ export interface SalesEntry {
   submittedAt: string
   approved: boolean
   approvedBy?: string
+  // ── New fields ──
+  doughMade: number
+  totalBill: number
+  leftOver: number
 }
 
 export interface ScheduleEntry {
@@ -92,6 +96,12 @@ export interface AppSettings {
   spreadsheetId: string
   managerPhone: string
   dailyTarget: number
+  // ── New fields ──
+  staffList: Record<Outlet, string[]>
+  monthlyTarget: Record<Outlet, number>
+  weekendForecast: Record<Outlet, number>
+  weekdayForecast: Record<Outlet, number>
+  waGroupNumber: Record<Outlet, string>
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -330,4 +340,39 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spreadsheetId: '',
   managerPhone: '',
   dailyTarget: 3000,
+  staffList: {
+    '1 Utama': ['Ahmad Razif', 'Nurul Ain'],
+    'Melawati Mall': ['Hafiz Zulkifli', 'Siti Rahmah'],
+  },
+  monthlyTarget: {
+    '1 Utama': 80000,
+    'Melawati Mall': 80000,
+  },
+  weekendForecast: {
+    '1 Utama': 3000,
+    'Melawati Mall': 3000,
+  },
+  weekdayForecast: {
+    '1 Utama': 1500,
+    'Melawati Mall': 1500,
+  },
+  waGroupNumber: {
+    '1 Utama': '',
+    'Melawati Mall': '',
+  },
+}
+
+// ─── MTD Sales helper ─────────────────────────────────────────────────────────
+
+export const getMtdSales = (outlet: Outlet, includeToday = true): number => {
+  const entries: SalesEntry[] = store.get(STORAGE_KEYS.salesEntries(outlet), [])
+  const now = new Date()
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  return entries
+    .filter((e) => {
+      if (!e.date.startsWith(monthPrefix)) return false
+      if (!includeToday && e.date === todayStr()) return false
+      return true
+    })
+    .reduce((sum, e) => sum + e.cash + e.card + e.duitnow + e.onePay, 0)
 }
